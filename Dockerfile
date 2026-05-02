@@ -21,12 +21,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-RUN useradd --create-home appuser \
-    && mkdir -p /data \
-    && chown -R appuser:appuser /data
-USER appuser
-WORKDIR /home/appuser/app
-
-COPY --from=builder --chown=appuser:appuser /build .
+# NOTE: we deliberately run as root.
+# Railway mounts persistent volumes as root-owned at /data, and there is no
+# way to chown them before mount. Running as root avoids a permission-denied
+# failure when the runner tries to write trace.jsonl / dashboard.html into
+# the mounted volume. This container has no inbound network and only reads
+# secrets from env, so root is acceptable for this workload.
+WORKDIR /app
+COPY --from=builder /build /app
 
 ENTRYPOINT ["tradingagents"]
