@@ -1,0 +1,38 @@
+# Railway deployment config.
+#
+# This describes ONE service that runs the daily live pipeline as a Railway
+# Cron Job. Railway invokes the start command on the schedule, the container
+# runs to completion, and exits. Logs are retained per invocation in the
+# Railway UI; per-run artifacts (trace.jsonl, summary.json, dashboard.html)
+# are written to the persistent volume mounted at /data.
+#
+# IMPORTANT: set these env vars in the Railway dashboard, NOT here:
+#   ANTHROPIC_API_KEY
+#   ALPACA_API_KEY
+#   ALPACA_API_SECRET
+#   ALPACA_PAPER=true
+#
+# To run on demand from the Railway shell:
+#   tradingagents live --dry-run
+#   tradingagents live --execute
+#
+# The schedule below is 13:45 UTC = 09:45 ET (15 minutes after market open),
+# Mon-Fri. Adjust to taste; remember UTC, no DST handling.
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+# One-shot daily run; Railway treats this like a cron job because of the
+# cronSchedule below. The container exits cleanly after `tradingagents live`
+# returns.
+startCommand = "tradingagents live --execute"
+restartPolicyType = "NEVER"
+cronSchedule = "45 13 * * 1-5"
+
+# Persistent volume for results_dir so trace/summary/dashboard survive
+# between invocations.
+[[deploy.volumes]]
+mountPath = "/data"
+name = "tradingagents_data"

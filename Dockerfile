@@ -13,12 +13,17 @@ RUN pip install --no-cache-dir .
 FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    TRADINGAGENTS_RESULTS_DIR=/data/logs \
+    TRADINGAGENTS_CACHE_DIR=/data/cache \
+    TRADINGAGENTS_MEMORY_LOG_PATH=/data/memory/trading_memory.md
 
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-RUN useradd --create-home appuser
+RUN useradd --create-home appuser \
+    && mkdir -p /data \
+    && chown -R appuser:appuser /data
 USER appuser
 WORKDIR /home/appuser/app
 

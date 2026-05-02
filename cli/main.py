@@ -1217,5 +1217,84 @@ def analyze(
     run_analysis(checkpoint=checkpoint)
 
 
+@app.command()
+def live(
+    tickers: str = typer.Option(
+        "AAPL,MSFT,GOOGL,AMZN,META,NVDA,TSLA",
+        "--tickers",
+        help="Comma-separated watchlist. Defaults to MAG7.",
+    ),
+    dry_run: bool = typer.Option(
+        True,
+        "--dry-run/--execute",
+        help="Dry run (default) plans orders without sending. --execute submits.",
+    ),
+    deep_model: str = typer.Option(
+        "claude-sonnet-4-6",
+        "--deep-model",
+        help="Anthropic model for deep reasoning (Research Manager, PM).",
+    ),
+    quick_model: str = typer.Option(
+        "claude-haiku-4-5-20251001",
+        "--quick-model",
+        help="Anthropic model for fast / high-volume agents.",
+    ),
+    debate_rounds: int = typer.Option(
+        1, "--debate-rounds", help="Bull/bear and risk debate rounds."
+    ),
+    max_weight: float = typer.Option(
+        0.20, "--max-weight", help="Max equity weight per single name."
+    ),
+    paper_only: bool = typer.Option(
+        True,
+        "--paper-only/--allow-live",
+        help="Refuse to run against a non-paper Alpaca account (default).",
+    ),
+):
+    """Run the agent pipeline over the watchlist and (optionally) trade Alpaca paper.
+
+    Outputs to ~/.tradingagents/logs/live_runs/<run_id>/:
+      - trace.jsonl    (every prompt, response, tool call)
+      - summary.json   (account, ratings, planned + executed orders, errors)
+      - dashboard.html (browsable audit page)
+      - <TICKER>/...   (per-ticker full state dumps from the framework)
+    """
+    from tradingagents.execution.runner import LiveRunner
+    from tradingagents.execution.risk_rails import RiskConfig
+
+    cfg = DEFAULT_CONFIG.copy()
+    cfg["llm_provider"] = "anthropic"
+    cfg["deep_think_llm"] = deep_model
+    cfg["quick_think_llm"] = quick_model
+    cfg["max_debate_rounds"] = debate_rounds
+    cfg["max_risk_discuss_rounds"] = debate_rounds
+
+    risk = RiskConfig(paper_only=paper_only, max_weight_per_name=max_weight)
+    watchlist = tuple(t.strip().upper() for t in tickers.split(",") if t.strip())
+
+    runner = LiveRunner(
+        watchlist=watchlist,
+        risk=risk,
+        config=cfg,
+        dry_run=dry_run,
+    )
+    summary = runner.run()
+
+    # Console summary so cron logs are scannable.
+    console.print(f"[green]Run {summary.run_id} complete.[/green]")
+    console.print(f"  Output: {runner.run_dir}")
+    console.print(f"  Verdicts: {len(summary.verdicts)}")
+    for v in summary.verdicts:
+        rating = v.rating or ("ERROR" if v.error else "—")
+        console.print(f"    {v.ticker}: {rating}")
+    console.print(f"  Planned orders: {len(summary.planned_orders)}")
+    console.print(f"  Submitted orders: "
+                  f"{sum(1 for o in summary.executed_orders if o.get('status') == 'submitted')}")
+    if summary.rail_violations:
+        console.print(f"[yellow]  Rail violations: {len(summary.rail_violations)}[/yellow]")
+    if summary.errors:
+        console.print(f"[red]  Errors: {len(summary.errors)}[/red]")
+
+
 if __name__ == "__main__":
     app()
